@@ -48,7 +48,7 @@ jobs:
 
       - name: Download source video from Google Drive
         env:
-          GOOGLE_DRIVE_FILE_ID: 19L2fgu64fz5mLUFBPqI0mC84EWv18uHw
+          GOOGLE_DRIVE_FILE_ID: 15jdhOtW8_WMD9Y0rj9JyEDtCyFpg8OoA
         run: |
           gdown "$GOOGLE_DRIVE_FILE_ID" --output input.mkv
           test -s input.mkv
