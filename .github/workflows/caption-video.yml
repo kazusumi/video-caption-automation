@@ -1,0 +1,87 @@
+name: Generate captioned video
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  caption-video:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install FFmpeg and font support
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg fontconfig
+
+      - name: Install Dela Gothic One
+        run: |
+          mkdir -p "$HOME/.local/share/fonts" output/fonts
+          curl --fail --location \
+            https://github.com/google/fonts/raw/main/ofl/delagothicone/DelaGothicOne-Regular.ttf \
+            --output "$HOME/.local/share/fonts/DelaGothicOne-Regular.ttf"
+          cp "$HOME/.local/share/fonts/DelaGothicOne-Regular.ttf" output/fonts/
+          fc-cache --force
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt gdown==5.2.0
+
+      - name: Cache faster-whisper model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: faster-whisper-large-v3
+
+      - name: Download source video from Google Drive
+        env:
+          GOOGLE_DRIVE_FILE_ID: 19L2fgu64fz5mLUFBPqI0mC84EWv18uHw
+        run: |
+          gdown "$GOOGLE_DRIVE_FILE_ID" --output input.mkv
+          test -s input.mkv
+          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 input.mkv
+
+      - name: Generate Japanese captions and captioned video
+        env:
+          HF_HUB_DISABLE_XET: "1"
+        run: |
+          python caption_video.py input.mkv \
+            --output-dir output \
+            --model large-v3 \
+            --device cpu \
+            --compute-type int8
+
+      - name: Validate generated artifacts
+        run: |
+          test -s output/captioned_video.mp4
+          test -s output/subtitles_corrected.srt
+          test -s output/subtitles_styled.ass
+          ffprobe -v error \
+            -show_entries stream=codec_name,codec_type,width,height,pix_fmt,r_frame_rate \
+            -show_entries format=duration,size \
+            -of json output/captioned_video.mp4
+
+      - name: Upload captioned video and subtitles
+        uses: actions/upload-artifact@v4
+        with:
+          name: captioned-video
+          path: |
+            output/captioned_video.mp4
+            output/subtitles_corrected.srt
+            output/subtitles_styled.ass
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
